@@ -2,12 +2,13 @@
 daily_escapement.py (Singapore SGT Date Version)
 
 Reads the digest JSON produced by Manus AI and injects it into
-the Birch HTML template. The completed HTML is saved to disk
-for Manus to send via Gmail.
+the Birch HTML template. The completed HTML is then sent via 
+the Manus AI Gmail connector.
 """
 
 import json
 import sys
+import subprocess
 from datetime import datetime, timedelta, timezone
 
 INPUT_JSON    = "/home/ubuntu/generated_digest.json"
@@ -67,6 +68,29 @@ def generate_html(data, template_path):
 
     return template
 
+def send_email(html_content, date_str):
+    input_data = {
+        "messages": [
+            {
+                "to": ["suiguan.teo@gmail.com"],
+                "subject": f"The Daily Escapement — {date_str}",
+                "content": html_content
+            }
+        ]
+    }
+    
+    try:
+        subprocess.run(
+            ["manus-mcp-cli", "tool", "call", "gmail_send_messages", "--server", "gmail", "--input", json.dumps(input_data)],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        print("Success: Email sent via Gmail connector.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error sending email: {e}")
+        sys.exit(1)
+
 def main():
     try:
         with open(INPUT_JSON, "r", encoding="utf-8") as f:
@@ -80,8 +104,13 @@ def main():
         with open(OUTPUT_HTML, "w", encoding="utf-8") as f:
             f.write(final_html)
         print(f"Success: Email HTML written to {OUTPUT_HTML}")
+        
+        # Send the email directly
+        date_str = data.get("date") or datetime.now().strftime("%B %d, %Y")
+        send_email(final_html, date_str)
+        
     except Exception as e:
-        print(f"Error generating HTML: {e}")
+        print(f"Error generating or sending email: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
